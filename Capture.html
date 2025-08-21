@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Screenshot Notes App</title>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #screenshot { max-width: 100%; border: 1px solid #ccc; position: relative; }
+    .marker {
+      position: absolute;
+      font-size: 20px;
+      cursor: pointer;
+      transform: translate(-50%, -50%);
+    }
+    .note-box {
+      position: absolute;
+      background: white;
+      border: 1px solid #aaa;
+      padding: 4px;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+
+<button id="captureBtn">📸 Capture Screenshot</button>
+<div id="imageWrapper" style="position:relative; display:inline-block;"></div>
+
+<script>
+// --- Firebase Setup ---
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
+  authDomain: "comment-tool-9b8df.firebaseapp.com",
+  projectId: "comment-tool-9b8df",
+  storageBucket: "comment-tool-9b8df.firebasestorage.app",
+  messagingSenderId: "200596983749",
+  appId: "1:200596983749:web:cf0da1032d994b000b85ac",
+  measurementId: "G-F0PE34DWVN"
+};
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+const storage = firebase.storage();
+
+let currentScreenshot = null;
+let notes = [];
+
+// --- Capture Screenshot ---
+document.getElementById('captureBtn').onclick = async () => {
+  const canvas = await html2canvas(document.body); // capture viewport
+  const dataURL = canvas.toDataURL("image/png");
+
+  // Show screenshot
+  const wrapper = document.getElementById('imageWrapper');
+  wrapper.innerHTML = `<img id="screenshot" src="${dataURL}">`;
+
+  currentScreenshot = dataURL;
+
+  const img = document.getElementById('screenshot');
+  img.onclick = (e) => {
+    const rect = img.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    addMarker(wrapper, x, y);
+  };
+};
+
+// --- Add Marker & Note ---
+function addMarker(wrapper, x, y) {
+  const marker = document.createElement('div');
+  marker.className = 'marker';
+  marker.style.left = x + "px";
+  marker.style.top = y + "px";
+  marker.textContent = "💬";
+  wrapper.appendChild(marker);
+
+  const note = prompt("Enter your note:");
+  if (note) {
+    notes.push({ x, y, text: note, timestamp: Date.now() });
+    saveToFirebase();
+  }
+}
+
+// --- Save Screenshot + Notes to Firebase ---
+async function saveToFirebase() {
+  if (!currentScreenshot) return;
+
+  // Upload screenshot to Storage
+  const fileName = "screenshots/" + Date.now() + ".png";
+  const snapshot = await storage.ref(fileName).putString(currentScreenshot, 'data_url');
+  const downloadURL = await snapshot.ref.getDownloadURL();
+
+  // Save metadata to Firestore
+  await db.collection("screenshots").add({
+    tourID: "demo-tour",
+    sceneID: "lobby",
+    screenshotURL: downloadURL,
+    notes,
+    createdAt: new Date()
+  });
+
+  alert("Saved to Firebase!");
+}
+</script>
+</body>
+</html>

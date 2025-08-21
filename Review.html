@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Reviewer App</title>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #screenshots { display: grid; grid-template-columns: repeat(auto-fill, 200px); gap: 10px; }
+    .thumb { cursor: pointer; border: 1px solid #ccc; }
+    #viewer { display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:#000a; align-items:center; justify-content:center; }
+    #viewer img { max-width:90%; max-height:90%; position:relative; }
+    .marker {
+      position: absolute;
+      font-size: 20px;
+      cursor: pointer;
+      transform: translate(-50%, -50%);
+    }
+    .note-popup {
+      position: absolute;
+      background: white;
+      border: 1px solid #aaa;
+      padding: 6px;
+      font-size: 14px;
+      display:none;
+    }
+  </style>
+</head>
+<body>
+
+<h1>Reviewer Dashboard</h1>
+<div id="screenshots"></div>
+
+<div id="viewer">
+  <div style="position:relative;">
+    <img id="fullImg" src="">
+    <div id="markersWrapper"></div>
+  </div>
+</div>
+
+<script>
+// --- Firebase Setup ---
+// Your web app's Firebase configuration
+// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+const firebaseConfig = {
+  apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
+  authDomain: "comment-tool-9b8df.firebaseapp.com",
+  projectId: "comment-tool-9b8df",
+  storageBucket: "comment-tool-9b8df.firebasestorage.app",
+  messagingSenderId: "200596983749",
+  appId: "1:200596983749:web:cf0da1032d994b000b85ac",
+  measurementId: "G-F0PE34DWVN"
+};
+const app = firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// --- Load all screenshots ---
+async function loadScreenshots() {
+  const container = document.getElementById('screenshots');
+  const snap = await db.collection("screenshots").orderBy("createdAt", "desc").get();
+  snap.forEach(doc => {
+    const data = doc.data();
+    const img = document.createElement('img');
+    img.src = data.screenshotURL;
+    img.className = "thumb";
+    img.style.width = "200px";
+    img.onclick = () => openViewer(data);
+    container.appendChild(img);
+  });
+}
+
+// --- Open Viewer ---
+function openViewer(data) {
+  const viewer = document.getElementById('viewer');
+  const img = document.getElementById('fullImg');
+  const wrapper = document.getElementById('markersWrapper');
+
+  img.src = data.screenshotURL;
+  wrapper.innerHTML = ""; // clear old markers
+  viewer.style.display = "flex";
+
+  img.onload = () => {
+    data.notes.forEach(note => {
+      const marker = document.createElement('div');
+      marker.className = 'marker';
+      marker.textContent = "💬";
+      marker.style.left = note.x + "px";
+      marker.style.top = note.y + "px";
+
+      // popup for note
+      const popup = document.createElement('div');
+      popup.className = "note-popup";
+      popup.textContent = note.text;
+      marker.onclick = () => {
+        popup.style.display = popup.style.display === "none" ? "block" : "none";
+      };
+
+      marker.appendChild(popup);
+      wrapper.appendChild(marker);
+    });
+  };
+
+  // close on background click
+  viewer.onclick = (e) => {
+    if (e.target === viewer) viewer.style.display = "none";
+  };
+}
+
+loadScreenshots();
+</script>
+</body>
+</html>
