@@ -2,7 +2,7 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>3DVista Note Capture</title>
+  <title>3DVista Note Capture & Review</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
     #viewer { position: relative; width: 100%; max-width: 800px; height: 450px; border: 1px solid #ccc; margin-bottom: 10px; }
@@ -13,17 +13,18 @@
       cursor: pointer;
       transform: translate(-50%, -50%);
     }
+    #noteInput { width: 100%; margin-top: 10px; }
   </style>
 </head>
 <body>
 
-<h2>3DVista Note Capture</h2>
+<h2>3DVista Note Capture & Review</h2>
 
 <div id="viewer">
   <img id="sceneImg" src="scene-placeholder.jpg" alt="360 Viewer Placeholder">
 </div>
 
-<textarea id="noteInput" rows="3" cols="50" placeholder="Enter your note here"></textarea><br>
+<textarea id="noteInput" rows="3" placeholder="Enter your note here"></textarea><br>
 <button id="saveNote">Save Note & Screenshot</button>
 <p id="status"></p>
 
@@ -34,16 +35,15 @@
 
 <script>
   // --- Firebase Config ---
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
-const firebaseConfig = {
-  apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
-  authDomain: "comment-tool-9b8df.firebaseapp.com",
-  projectId: "comment-tool-9b8df",
-  storageBucket: "comment-tool-9b8df.firebasestorage.app",
-  messagingSenderId: "200596983749",
-  appId: "1:200596983749:web:cf0da1032d994b000b85ac",
-  measurementId: "G-F0PE34DWVN"
-};
+  const firebaseConfig = {
+    apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
+    authDomain: "comment-tool-9b8df.firebaseapp.com",
+    projectId: "comment-tool-9b8df",
+    storageBucket: "comment-tool-9b8df.appspot.com",
+    messagingSenderId: "200596983749",
+    appId: "1:200596983749:web:cf0da1032d994b000b85ac"
+  };
+
   const app = firebase.initializeApp(firebaseConfig);
   const db = firebase.firestore();
   const storage = firebase.storage();
@@ -75,19 +75,24 @@ const firebaseConfig = {
 
   // Save note + screenshot
   document.getElementById("saveNote").addEventListener("click", async () => {
-    const noteText = document.getElementById("noteInput").value;
-    if (!noteText) { document.getElementById("status").innerText = "Enter a note first."; return; }
+    const noteText = document.getElementById("noteInput").value.trim();
+    if (!noteText) {
+      document.getElementById("status").innerText = "Enter a note first.";
+      return;
+    }
 
     try {
       const sceneImg = document.getElementById("sceneImg");
       const canvas = document.createElement("canvas");
-      canvas.width = sceneImg.naturalWidth;
-      canvas.height = sceneImg.naturalHeight;
+      canvas.width = sceneImg.naturalWidth || 800;
+      canvas.height = sceneImg.naturalHeight || 450;
       const ctx = canvas.getContext("2d");
-      ctx.drawImage(sceneImg, 0, 0);
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      ctx.drawImage(sceneImg, 0, 0, canvas.width, canvas.height);
 
-      const fileRef = storage.ref().child(`screenshots/${Date.now()}.png`);
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Failed to create screenshot blob.");
+
+      const fileRef = storage.ref().child(`screenshots/${tourId}_${sceneId}_${Date.now()}.png`);
       await fileRef.put(blob);
       const screenshotURL = await fileRef.getDownloadURL();
 
@@ -102,11 +107,37 @@ const firebaseConfig = {
       document.getElementById("status").innerText = "✅ Note + screenshot saved!";
       document.getElementById("noteInput").value = "";
       document.querySelector(".marker")?.remove();
+      console.log("Saved successfully:", { tourId, sceneId, noteX, noteY, screenshotURL });
+
     } catch(err) {
-      console.error(err);
+      console.error("Error saving note:", err);
       document.getElementById("status").innerText = "❌ Error saving note.";
     }
   });
+
+  // --- Load existing notes for review ---
+  async function loadNotes() {
+    const snapshot = await db.collection("screenshots")
+                             .where("tourId", "==", tourId)
+                             .where("sceneId", "==", sceneId)
+                             .orderBy("createdAt")
+                             .get();
+
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      data.notes.forEach(note => {
+        const marker = document.createElement("div");
+        marker.className = "marker";
+        marker.textContent = "💬";
+        marker.style.left = (note.x * 100) + "%";
+        marker.style.top = (note.y * 100) + "%";
+        marker.title = note.text;
+        viewer.appendChild(marker);
+      });
+    });
+  }
+
+  loadNotes();
 </script>
 </body>
 </html>
