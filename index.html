@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>3DVista Comment Tool</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    #commentsToggle {
+      position: fixed;
+      top: 10px;
+      right: 10px;
+      z-index: 9999;
+      background: #0078d7;
+      color: white;
+      padding: 8px 16px;
+      border: none;
+      cursor: pointer;
+    }
+    #commentsPanel {
+      position: fixed;
+      top: 50px;
+      right: 10px;
+      width: 320px;
+      max-height: 80vh;
+      background: white;
+      border: 1px solid #ccc;
+      padding: 10px;
+      overflow-y: auto;
+      display: none;
+      z-index: 9999;
+    }
+    #commentsList {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    #commentsList li {
+      border-bottom: 1px solid #ddd;
+      padding: 8px 0;
+    }
+    #commentForm {
+      margin-top: 10px;
+      display: flex;
+      flex-direction: column;
+    }
+    #commentForm textarea {
+      resize: vertical;
+      min-height: 50px;
+      padding: 6px;
+      font-size: 14px;
+    }
+    #commentForm button {
+      margin-top: 6px;
+      padding: 6px;
+      background: #0078d7;
+      color: white;
+      border: none;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    #markers {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none; /* So you can click "through" this layer */
+  z-index: 5000;
+}
+    .marker {
+	pointer-events: auto; /* allows clicking marker */
+      position: absolute;
+      background: #0078d7cc;
+      border-radius: 50%;
+      width: 20px;
+      height: 20px;
+      cursor: pointer;
+      pointer-events: auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      font-weight: bold;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <button id="commentsToggle">💬 Show Comments</button>
+
+  <div id="commentsPanel">
+    <ul id="commentsList"></ul>
+    <form id="commentForm">
+      <textarea placeholder="Add your comment here"></textarea>
+      <button type="submit">Save Comment</button>
+    </form>
+  </div>
+
+  <div id="markers"></div>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-firestore-compat.js"></script>
+
+  <!-- Your script -->
+  <script src="script.js"></script>
+</body>
+</html>
