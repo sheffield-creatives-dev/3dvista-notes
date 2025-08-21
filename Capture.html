@@ -1,36 +1,40 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Screenshot Notes App</title>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js"></script>
+  <meta charset="UTF-8">
+  <title>3DVista Notes Capture</title>
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #screenshot { max-width: 100%; border: 1px solid #ccc; position: relative; }
+    body { font-family: sans-serif; padding: 20px; }
+    #viewer { position: relative; width: 800px; height: 450px; border: 1px solid #ccc; margin-bottom: 10px; }
+    #viewer img { width: 100%; height: 100%; object-fit: cover; }
     .marker {
       position: absolute;
       font-size: 20px;
       cursor: pointer;
       transform: translate(-50%, -50%);
     }
-    .note-box {
-      position: absolute;
-      background: white;
-      border: 1px solid #aaa;
-      padding: 4px;
-      font-size: 14px;
-    }
   </style>
 </head>
 <body>
 
-<button id="captureBtn">📸 Capture Screenshot</button>
-<div id="imageWrapper" style="position:relative; display:inline-block;"></div>
+<h2>3DVista Note Capture</h2>
+
+<div id="viewer">
+  <img id="sceneImg" src="scene-placeholder.jpg" alt="360 Viewer Placeholder">
+</div>
+
+<textarea id="noteInput" rows="3" cols="50" placeholder="Enter your note here"></textarea><br>
+<button id="saveNote">Save Note & Screenshot</button>
+
+<p id="status"></p>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
 
 <script>
-// --- Firebase Setup ---
+  // --- Firebase Config ---
 // For Firebase JS SDK v7.20.0 and later, measurementId is optional
 const firebaseConfig = {
   apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
@@ -41,71 +45,73 @@ const firebaseConfig = {
   appId: "1:200596983749:web:cf0da1032d994b000b85ac",
   measurementId: "G-F0PE34DWVN"
 };
-const app = firebase.initializeApp(firebaseConfig);
-const db = firebase.firestore();
-const storage = firebase.storage();
+  const app = firebase.initializeApp(firebaseConfig);
+  const db = firebase.firestore();
+  const storage = firebase.storage();
 
-let currentScreenshot = null;
-let notes = [];
+  const viewer = document.getElementById("viewer");
+  let noteX = 0, noteY = 0;
 
-// --- Capture Screenshot ---
-document.getElementById('captureBtn').onclick = async () => {
-  const canvas = await html2canvas(document.body); // capture viewport
-  const dataURL = canvas.toDataURL("image/png");
+  // --- Place marker on click ---
+  viewer.addEventListener("click", function(e) {
+    const rect = viewer.getBoundingClientRect();
+    noteX = (e.clientX - rect.left) / rect.width;
+    noteY = (e.clientY - rect.top) / rect.height;
 
-  // Show screenshot
-  const wrapper = document.getElementById('imageWrapper');
-  wrapper.innerHTML = `<img id="screenshot" src="${dataURL}">`;
+    // remove old temporary marker
+    const old = document.querySelector(".marker");
+    if (old) old.remove();
 
-  currentScreenshot = dataURL;
-
-  const img = document.getElementById('screenshot');
-  img.onclick = (e) => {
-    const rect = img.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    addMarker(wrapper, x, y);
-  };
-};
-
-// --- Add Marker & Note ---
-function addMarker(wrapper, x, y) {
-  const marker = document.createElement('div');
-  marker.className = 'marker';
-  marker.style.left = x + "px";
-  marker.style.top = y + "px";
-  marker.textContent = "💬";
-  wrapper.appendChild(marker);
-
-  const note = prompt("Enter your note:");
-  if (note) {
-    notes.push({ x, y, text: note, timestamp: Date.now() });
-    saveToFirebase();
-  }
-}
-
-// --- Save Screenshot + Notes to Firebase ---
-async function saveToFirebase() {
-  if (!currentScreenshot) return;
-
-  // Upload screenshot to Storage
-  const fileName = "screenshots/" + Date.now() + ".png";
-  const snapshot = await storage.ref(fileName).putString(currentScreenshot, 'data_url');
-  const downloadURL = await snapshot.ref.getDownloadURL();
-
-  // Save metadata to Firestore
-  await db.collection("screenshots").add({
-    tourID: "demo-tour",
-    sceneID: "lobby",
-    screenshotURL: downloadURL,
-    notes,
-    createdAt: new Date()
+    const marker = document.createElement("div");
+    marker.className = "marker";
+    marker.textContent = "💬";
+    marker.style.left = (noteX * 100) + "%";
+    marker.style.top = (noteY * 100) + "%";
+    viewer.appendChild(marker);
   });
 
-  alert("Saved to Firebase!");
-}
+  // --- Save screenshot + note ---
+  document.getElementById("saveNote").addEventListener("click", async () => {
+    const noteText = document.getElementById("noteInput").value;
+    if (!noteText) { document.getElementById("status").innerText = "Enter a note first."; return; }
+
+    try {
+      const sceneImg = document.getElementById("sceneImg");
+
+      // Create a canvas to capture the screenshot
+      const canvas = document.createElement("canvas");
+      canvas.width = sceneImg.naturalWidth;
+      canvas.height = sceneImg.naturalHeight;
+      const ctx = canvas.getContext("2d");
+      ctx.drawImage(sceneImg, 0, 0);
+
+      // Convert canvas to blob
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
+
+      // Upload to Firebase Storage
+      const fileRef = storage.ref().child(`screenshots/${Date.now()}.png`);
+      await fileRef.put(blob);
+      const screenshotURL = await fileRef.getDownloadURL();
+
+      // Save Firestore document
+      await db.collection("screenshots").add({
+        screenshotURL,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+        notes: [{
+          text: noteText,
+          x: noteX,
+          y: noteY
+        }]
+      });
+
+      document.getElementById("status").innerText = "✅ Note + screenshot saved!";
+      document.getElementById("noteInput").value = "";
+      document.querySelector(".marker")?.remove();
+    } catch(err) {
+      console.error(err);
+      document.getElementById("status").innerText = "❌ Error saving note.";
+    }
+  });
 </script>
 </body>
 </html>
-
