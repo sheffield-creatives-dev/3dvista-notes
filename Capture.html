@@ -1,53 +1,179 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Firebase Note Test</title>
+  <title>Comment Tool</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="preload" href="script.js" as="script" />
+  <meta name="description" content="Virtual Tour" />
+  <meta name="theme-color" content="#FFFFFF" />
+  <script src="script.js"></script>
+  <style>
+    html, body {
+      height: 100%; width: 100%; margin: 0; padding: 0; overflow: hidden;
+    }
+    .fill-viewport {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0; margin: 0; overflow: hidden;
+    }
+    #viewer { z-index: 1; }
+    #preloadContainer { z-index: 2; background: white; opacity: 0; transition: opacity 0.5s; }
+
+    .comment-marker {
+      position: absolute;
+      cursor: pointer;
+      font-size: 24px;
+      color: #4285F4;
+      text-shadow: 1px 1px 2px black;
+      z-index: 9999;
+    }
+    .comment-box {
+      position: absolute;
+      z-index: 10000;
+      background: white;
+      padding: 10px;
+      border-radius: 5px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.5);
+      display: none;
+    }
+    #ui-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      pointer-events: none;
+      z-index: 9999;
+    }
+    #comment-toggle-button {
+      pointer-events: auto;
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      padding: 8px 12px;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      background-color: #007bff;
+      color: white;
+      z-index: 10001;
+    }
+  </style>
 </head>
 <body>
-  <h2>Firebase Note Test</h2>
-  <textarea id="noteInput" rows="3" cols="50" placeholder="Enter a note"></textarea><br>
-  <button id="saveNote">Save Note</button>
-  <p id="status"></p>
+  <div id="preloadContainer" class="fill-viewport"></div>
+  <div id="viewer" class="fill-viewport"></div>
+  <div id="ui-overlay">
+    <button id="comment-toggle-button">Show Comments</button>
+  </div>
 
-  <!-- Firebase SDK -->
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-app.js";
+    import { getFirestore, collection, addDoc, onSnapshot, query } from "https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore.js";
 
-  <script>
-    // 🔹 Your Firebase config (replace with your own if needed)
     const firebaseConfig = {
       apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
       authDomain: "comment-tool-9b8df.firebaseapp.com",
       projectId: "comment-tool-9b8df",
       storageBucket: "comment-tool-9b8df.appspot.com",
       messagingSenderId: "200596983749",
-      appId: "1:200596983749:web:cf0da1032d994b000b85ac"
+      appId: "1:200596983749:web:cf0da1032d994b000b85ac",
+      measurementId: "G-F0PE34DWVN"
     };
 
-    // Initialize Firebase
-    const app = firebase.initializeApp(firebaseConfig);
-    const db = firebase.firestore();
+    const app = initializeApp(firebaseConfig);
+    const db = getFirestore(app);
+    const commentsCollection = collection(db, "comments");
 
-    // Button click handler
-    document.getElementById("saveNote").addEventListener("click", async () => {
-      const noteText = document.getElementById("noteInput").value;
-      if (!noteText) {
-        document.getElementById("status").innerText = "Enter a note first.";
-        return;
-      }
+    let viewer = null;
+    let isCommentsVisible = true;
+    let commentMarkers = [];
 
-      try {
-        await db.collection("test_notes").add({
-          text: noteText,
-          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    window.addEventListener('load', () => {
+      viewer = window.tdvplayer;
+
+      if (viewer) {
+        viewer.on("changeScene", (sceneId) => {
+          loadCommentsForScene(sceneId);
+          document.getElementById('comment-toggle-button').style.display = 'block';
         });
-        document.getElementById("status").innerText = "✅ Note saved!";
-        document.getElementById("noteInput").value = "";
-      } catch(err) {
-        console.error(err);
-        document.getElementById("status").innerText = "❌ Error saving note. Check console.";
+
+        document.getElementById('viewer').addEventListener('click', (event) => {
+          if (event.target.closest('#comment-toggle-button') || event.target.closest('.comment-marker')) return;
+
+          const sceneId = viewer.getScene();
+          const { yaw, pitch } = viewer.getView();
+          openCommentBox(sceneId, yaw, pitch);
+          document.getElementById('comment-toggle-button').style.display = 'none';
+        });
+
+        loadCommentsForScene(viewer.getScene());
       }
+    });
+
+    function yawPitchToScreen(yaw, pitch) {
+      const x = (yaw + 180) / 360 * window.innerWidth;
+      const y = (90 - pitch) / 180 * window.innerHeight;
+      return { x, y };
+    }
+
+    function loadCommentsForScene(sceneId) {
+      commentMarkers.forEach(marker => marker.remove());
+      commentMarkers = [];
+
+      const q = query(commentsCollection);
+      onSnapshot(q, (querySnapshot) => {
+        commentMarkers.forEach(marker => marker.remove());
+        commentMarkers = [];
+
+        querySnapshot.forEach((doc) => {
+          const data = doc.data();
+          if (data.scene === sceneId) {
+            createCommentMarker(data);
+          }
+        });
+      });
+    }
+
+    function createCommentMarker(data) {
+      const marker = document.createElement('div');
+      marker.className = 'comment-marker';
+      marker.textContent = '💬';
+
+      const { x, y } = yawPitchToScreen(data.yaw, data.pitch);
+      marker.style.left = `${x}px`;
+      marker.style.top = `${y}px`;
+
+      marker.addEventListener('click', () => {
+        alert(`Comment: ${data.text}`);
+      });
+
+      document.getElementById('ui-overlay').appendChild(marker);
+      commentMarkers.push(marker);
+    }
+
+    function openCommentBox(sceneId, yaw, pitch) {
+      const commentText = prompt("Leave a comment:");
+      if (commentText) {
+        addDoc(commentsCollection, {
+          scene: sceneId,
+          yaw: yaw,
+          pitch: pitch,
+          text: commentText,
+          timestamp: new Date().toISOString()
+        })
+        .then(() => console.log("Comment added successfully!"))
+        .catch((error) => console.error("Error adding comment: ", error));
+      }
+    }
+
+    document.getElementById('comment-toggle-button').addEventListener('click', () => {
+      isCommentsVisible = !isCommentsVisible;
+      commentMarkers.forEach(marker => {
+        marker.style.display = isCommentsVisible ? 'block' : 'none';
+      });
+      document.getElementById('comment-toggle-button').textContent = isCommentsVisible ? 'Hide Comments' : 'Show Comments';
     });
   </script>
 </body>
