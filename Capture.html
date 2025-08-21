@@ -2,142 +2,53 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>3DVista Note Capture & Review</title>
-  <style>
-    body { font-family: sans-serif; padding: 20px; }
-    #viewer { position: relative; width: 100%; max-width: 800px; height: 450px; border: 1px solid #ccc; margin-bottom: 10px; }
-    #viewer img { width: 100%; height: 100%; object-fit: cover; }
-    .marker {
-      position: absolute;
-      font-size: 20px;
-      cursor: pointer;
-      transform: translate(-50%, -50%);
-    }
-    #noteInput { width: 100%; margin-top: 10px; }
-  </style>
+  <title>Firebase Note Test</title>
 </head>
 <body>
+  <h2>Firebase Note Test</h2>
+  <textarea id="noteInput" rows="3" cols="50" placeholder="Enter a note"></textarea><br>
+  <button id="saveNote">Save Note</button>
+  <p id="status"></p>
 
-<h2>3DVista Note Capture & Review</h2>
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
 
-<div id="viewer">
-  <img id="sceneImg" src="scene-placeholder.jpg" alt="360 Viewer Placeholder">
-</div>
+  <script>
+    // 🔹 Your Firebase config (replace with your own if needed)
+    const firebaseConfig = {
+      apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
+      authDomain: "comment-tool-9b8df.firebaseapp.com",
+      projectId: "comment-tool-9b8df",
+      storageBucket: "comment-tool-9b8df.appspot.com",
+      messagingSenderId: "200596983749",
+      appId: "1:200596983749:web:cf0da1032d994b000b85ac"
+    };
 
-<textarea id="noteInput" rows="3" placeholder="Enter your note here"></textarea><br>
-<button id="saveNote">Save Note & Screenshot</button>
-<p id="status"></p>
+    // Initialize Firebase
+    const app = firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
 
-<!-- Firebase SDK -->
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js"></script>
-<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js"></script>
+    // Button click handler
+    document.getElementById("saveNote").addEventListener("click", async () => {
+      const noteText = document.getElementById("noteInput").value;
+      if (!noteText) {
+        document.getElementById("status").innerText = "Enter a note first.";
+        return;
+      }
 
-<script>
-  // --- Firebase Config ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyBFM_a1Das_MXmpZZ1uon-VXMw0jm5_ioQ",
-    authDomain: "comment-tool-9b8df.firebaseapp.com",
-    projectId: "comment-tool-9b8df",
-    storageBucket: "comment-tool-9b8df.appspot.com",
-    messagingSenderId: "200596983749",
-    appId: "1:200596983749:web:cf0da1032d994b000b85ac"
-  };
-
-  const app = firebase.initializeApp(firebaseConfig);
-  const db = firebase.firestore();
-  const storage = firebase.storage();
-
-  const viewer = document.getElementById("viewer");
-  let noteX = 0, noteY = 0;
-
-  // Read tour & scene from URL
-  const urlParams = new URLSearchParams(window.location.search);
-  const tourId = urlParams.get('tour') || "UnknownTour";
-  const sceneId = urlParams.get('scene') || "UnknownScene";
-
-  // Place marker
-  viewer.addEventListener("click", function(e) {
-    const rect = viewer.getBoundingClientRect();
-    noteX = (e.clientX - rect.left) / rect.width;
-    noteY = (e.clientY - rect.top) / rect.height;
-
-    // remove old temporary marker
-    document.querySelector(".marker")?.remove();
-
-    const marker = document.createElement("div");
-    marker.className = "marker";
-    marker.textContent = "💬";
-    marker.style.left = (noteX * 100) + "%";
-    marker.style.top = (noteY * 100) + "%";
-    viewer.appendChild(marker);
-  });
-
-  // Save note + screenshot
-  document.getElementById("saveNote").addEventListener("click", async () => {
-    const noteText = document.getElementById("noteInput").value.trim();
-    if (!noteText) {
-      document.getElementById("status").innerText = "Enter a note first.";
-      return;
-    }
-
-    try {
-      const sceneImg = document.getElementById("sceneImg");
-      const canvas = document.createElement("canvas");
-      canvas.width = sceneImg.naturalWidth || 800;
-      canvas.height = sceneImg.naturalHeight || 450;
-      const ctx = canvas.getContext("2d");
-      ctx.drawImage(sceneImg, 0, 0, canvas.width, canvas.height);
-
-      const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
-      if (!blob) throw new Error("Failed to create screenshot blob.");
-
-      const fileRef = storage.ref().child(`screenshots/${tourId}_${sceneId}_${Date.now()}.png`);
-      await fileRef.put(blob);
-      const screenshotURL = await fileRef.getDownloadURL();
-
-      await db.collection("screenshots").add({
-        screenshotURL,
-        tourId,
-        sceneId,
-        createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        notes: [{ text: noteText, x: noteX, y: noteY }]
-      });
-
-      document.getElementById("status").innerText = "✅ Note + screenshot saved!";
-      document.getElementById("noteInput").value = "";
-      document.querySelector(".marker")?.remove();
-      console.log("Saved successfully:", { tourId, sceneId, noteX, noteY, screenshotURL });
-
-    } catch(err) {
-      console.error("Error saving note:", err);
-      document.getElementById("status").innerText = "❌ Error saving note.";
-    }
-  });
-
-  // --- Load existing notes for review ---
-  async function loadNotes() {
-    const snapshot = await db.collection("screenshots")
-                             .where("tourId", "==", tourId)
-                             .where("sceneId", "==", sceneId)
-                             .orderBy("createdAt")
-                             .get();
-
-    snapshot.forEach(doc => {
-      const data = doc.data();
-      data.notes.forEach(note => {
-        const marker = document.createElement("div");
-        marker.className = "marker";
-        marker.textContent = "💬";
-        marker.style.left = (note.x * 100) + "%";
-        marker.style.top = (note.y * 100) + "%";
-        marker.title = note.text;
-        viewer.appendChild(marker);
-      });
+      try {
+        await db.collection("test_notes").add({
+          text: noteText,
+          createdAt: firebase.firestore.FieldValue.serverTimestamp()
+        });
+        document.getElementById("status").innerText = "✅ Note saved!";
+        document.getElementById("noteInput").value = "";
+      } catch(err) {
+        console.error(err);
+        document.getElementById("status").innerText = "❌ Error saving note. Check console.";
+      }
     });
-  }
-
-  loadNotes();
-</script>
+  </script>
 </body>
 </html>
