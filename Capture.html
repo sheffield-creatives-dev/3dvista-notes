@@ -2,10 +2,10 @@
 <html>
 <head>
   <meta charset="UTF-8">
-  <title>3DVista Notes Capture</title>
+  <title>3DVista Note Capture</title>
   <style>
     body { font-family: sans-serif; padding: 20px; }
-    #viewer { position: relative; width: 800px; height: 450px; border: 1px solid #ccc; margin-bottom: 10px; }
+    #viewer { position: relative; width: 100%; max-width: 800px; height: 450px; border: 1px solid #ccc; margin-bottom: 10px; }
     #viewer img { width: 100%; height: 100%; object-fit: cover; }
     .marker {
       position: absolute;
@@ -25,7 +25,6 @@
 
 <textarea id="noteInput" rows="3" cols="50" placeholder="Enter your note here"></textarea><br>
 <button id="saveNote">Save Note & Screenshot</button>
-
 <p id="status"></p>
 
 <!-- Firebase SDK -->
@@ -52,15 +51,19 @@ const firebaseConfig = {
   const viewer = document.getElementById("viewer");
   let noteX = 0, noteY = 0;
 
-  // --- Place marker on click ---
+  // Read tour & scene from URL
+  const urlParams = new URLSearchParams(window.location.search);
+  const tourId = urlParams.get('tour') || "UnknownTour";
+  const sceneId = urlParams.get('scene') || "UnknownScene";
+
+  // Place marker
   viewer.addEventListener("click", function(e) {
     const rect = viewer.getBoundingClientRect();
     noteX = (e.clientX - rect.left) / rect.width;
     noteY = (e.clientY - rect.top) / rect.height;
 
     // remove old temporary marker
-    const old = document.querySelector(".marker");
-    if (old) old.remove();
+    document.querySelector(".marker")?.remove();
 
     const marker = document.createElement("div");
     marker.className = "marker";
@@ -70,38 +73,30 @@ const firebaseConfig = {
     viewer.appendChild(marker);
   });
 
-  // --- Save screenshot + note ---
+  // Save note + screenshot
   document.getElementById("saveNote").addEventListener("click", async () => {
     const noteText = document.getElementById("noteInput").value;
     if (!noteText) { document.getElementById("status").innerText = "Enter a note first."; return; }
 
     try {
       const sceneImg = document.getElementById("sceneImg");
-
-      // Create a canvas to capture the screenshot
       const canvas = document.createElement("canvas");
       canvas.width = sceneImg.naturalWidth;
       canvas.height = sceneImg.naturalHeight;
       const ctx = canvas.getContext("2d");
       ctx.drawImage(sceneImg, 0, 0);
-
-      // Convert canvas to blob
       const blob = await new Promise(resolve => canvas.toBlob(resolve, "image/png"));
 
-      // Upload to Firebase Storage
       const fileRef = storage.ref().child(`screenshots/${Date.now()}.png`);
       await fileRef.put(blob);
       const screenshotURL = await fileRef.getDownloadURL();
 
-      // Save Firestore document
       await db.collection("screenshots").add({
         screenshotURL,
+        tourId,
+        sceneId,
         createdAt: firebase.firestore.FieldValue.serverTimestamp(),
-        notes: [{
-          text: noteText,
-          x: noteX,
-          y: noteY
-        }]
+        notes: [{ text: noteText, x: noteX, y: noteY }]
       });
 
       document.getElementById("status").innerText = "✅ Note + screenshot saved!";
